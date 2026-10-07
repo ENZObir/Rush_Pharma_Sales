@@ -11,5 +11,5 @@ Architecture : voir [ARCHITECTURE.MD](ARCHITECTURE.MD).
 
 | Membre | Rôle | Modules |
 |---|---|---|
-| _à compléter_ | A — Données → Classeur | `io/loaders`, `quality/*`, `features/*`, `stats/descriptive`, `excel/*` |
-| _à compléter_ | B — Prévision & environnement | `io/external`, `forecast/*`, `stats/seasonality`, `stats/variability`, `viz/*` |
+| Enzo | A — Données → Classeur | `io/loaders`, `quality/*`, `features/*`, `stats/descriptive`, `excel/*` |
+| Seif | B — Prévision & environnement | `io/external`, `forecast/*`, `stats/seasonality`, `stats/variability`, `viz/*` |
