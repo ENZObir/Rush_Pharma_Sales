@@ -1,0 +1,35 @@
+# Seule source de configuration du pipeline. Aucune date en dur.
+
+paths:
+  raw: data/raw
+  external: data/external
+  processed: data/processed
+  template: templates/outil_pharma.xlsx
+  output: output/Analyse_Pharma.xlsx
+  figures: output/figures
+
+raw_files:
+  hourly: Pharma_Ventes_Hourly.csv
+  daily: Pharma_Ventes_Daily.csv
+  weekly: Pharma_Ventes_Weekly.csv
+  monthly: Pharma_Ventes_Monthly.csv
+
+date_formats:
+  hourly: "%m/%d/%Y %H:%M"
+  daily: "%m/%d/%Y"
+  weekly: "%m/%d/%Y"
+  monthly: "%Y-%m-%d"
+
+atc_groups: [M01AB, M01AE, N02BA, N02BE, N05B, N05C, R03, R06]
+
+quality:
+  reconciliation_tolerance: 0.01   # écart relatif toléré
+  incomplete_month_ratio: 0.9      # part minimale de jours pour un mois complet
+
+forecast:
+  horizon: 1
+  backtest_months: 24
+  seasonal_period: 12
+
+external:
+  sources: {}                      # rempli par B (Sentinelles, pollens, jours fériés…)
