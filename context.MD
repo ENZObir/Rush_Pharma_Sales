@@ -15,7 +15,65 @@ En tant que consultants, vous transformez 6 ans d'export de caisse d'une pharmac
 
 ---
 
-## 2. Les objectifs et comment les atteindre
+## 2. Dictionnaire des données
+
+4 exports CSV (`data/raw/`), séparateur `,`, en-tête sur la 1ʳᵉ ligne, aucune valeur vide, aucune valeur négative.
+
+### 2.1 Les fichiers
+
+| Fichier | Lignes | Grain | Première → dernière date | Colonnes |
+|---|---|---|---|---|
+| `Pharma_Ventes_Hourly.csv` | 50 532 | 1 ligne = 1 heure | `1/2/2014 8:00` → `10/8/2019 19:00` | `datum` + 8 ATC + 4 calendaires |
+| `Pharma_Ventes_Daily.csv` | 2 106 | 1 ligne = 1 jour | `1/2/2014` → `10/8/2019` | `datum` + 8 ATC + 4 calendaires |
+| `Pharma_Ventes_Weekly.csv` | 302 | 1 ligne = 1 semaine (lun → dim) | `1/5/2014` → `10/13/2019` | `datum` + 8 ATC |
+| `Pharma_Ventes_Monthly.csv` | 70 | 1 ligne = 1 mois | `2014-01-31` → `2019-10-31` | `datum` + 8 ATC |
+
+### 2.2 Les colonnes
+
+| Colonne | Fichiers | Type brut (CSV) | Type cible (pandas) | Signification |
+|---|---|---|---|---|
+| `datum` | tous | texte | `datetime64[ns]` | Date de la période. **Format `m/d/Y`** (+ `H:MM` en horaire) sauf Monthly en **ISO `Y-m-d`**. Weekly : dimanche de **fin** de semaine. Monthly : dernier jour du mois. |
+| `M01AB` | tous | décimal | `float64` | Anti-inflammatoires non stéroïdiens, dérivés de l'acide acétique (ex. **diclofénac**) |
+| `M01AE` | tous | décimal | `float64` | Anti-inflammatoires non stéroïdiens, dérivés de l'acide propionique (ex. **ibuprofène**) |
+| `N02BA` | tous | décimal | `float64` | Analgésiques, acide salicylique et dérivés (ex. **aspirine**) |
+| `N02BE` | tous | décimal | `float64` | Analgésiques, anilides (ex. **paracétamol**) — le plus gros volume |
+| `N05B` | tous | décimal | `float64` | Psycholeptiques, **anxiolytiques** — donnée sensible |
+| `N05C` | tous | entier | `float64` | Psycholeptiques, **hypnotiques et sédatifs** — donnée sensible |
+| `R03` | tous | décimal | `float64` | Médicaments des **voies respiratoires obstructives** (asthme, BPCO) |
+| `R06` | tous | décimal | `float64` | **Antihistaminiques** à usage systémique (allergies) |
+| `Year` | Hourly, Daily | entier | *supprimée* | Année (2014–2019), redondante avec `datum` |
+| `Month` | Hourly, Daily | entier | *supprimée* | Mois (1–12), redondant avec `datum` |
+| `Hour` | Hourly, Daily | entier | *supprimée* (recalculée en `hour` `Int8` pour l'horaire) | Horaire : heure 0–23. **Journalier : somme des heures de la journée (190–276), sans signification métier** — 276 = 0+1+…+23 |
+| `Weekday Name` | Hourly, Daily | texte | *supprimée* | Jour de la semaine en anglais (`Monday`…), redondant avec `datum` |
+
+Les 8 colonnes ATC sont des **quantités enregistrées par le logiciel de caisse** : l'unité n'est pas documentée (boîtes ? unités de prise ?), il ne faut pas l'inventer.
+
+### 2.3 Valeurs observées par groupe ATC
+
+| ATC | Horaire max | Journalier min – max | Mensuel min – max | Quantités non entières (journalier) |
+|---|---|---|---|---|
+| M01AB | 7 | 0 – 17,3 | 44 – 211 | 1 277 / 2 106 |
+| M01AE | 6 | 0 – 14,5 | 37 – 240 | 1 826 / 2 106 |
+| N02BA | 6,5 | 0 – 16 | 21 – 194 | 897 / 2 106 |
+| N02BE | 29 | 1,2 – 161 | 295 – 1 830 | 1 262 / 2 106 |
+| N05B | 15 | 0 – 54,8 | 86 – 525 | 37 / 2 106 |
+| N05C | 6 | 0 – 9 | 5 – 50 | 0 |
+| R03 | 25 | 0 – 45 | 37 – 432 | 5 / 2 106 |
+| R06 | 5 | 0 – 15 | 11 – 213 | 244 / 2 106 |
+
+Les quantités décimales sont fréquentes (fractions de boîte probables) : à **signaler**, pas à arrondir.
+
+### 2.4 Points d'attention
+
+- **Couverture horaire** : 24 lignes par jour (0 h – 23 h, y compris la nuit), sauf le 1ᵉʳ jour (début 8 h) et le dernier (fin 19 h) : 2 106 × 24 − 12 = 50 532.
+- **Aucun jour manquant** dans le journalier entre le 02/01/2014 et le 08/10/2019.
+- **Périodes partielles** : la 1ʳᵉ semaine (jeu → dim), janvier 2014 (à partir du 2), la dernière semaine (s'arrête le mardi 8/10) et **octobre 2019 (8 jours seulement)**, bien que daté du 31 dans Monthly.
+- **Valeurs flottantes bruitées** dans Monthly (`99.75000000000003`) : résidus d'addition, arrondir à la comparaison.
+- **Données sensibles** : N05B et N05C au grain horaire présentent un risque de réidentification (voir Objectif G).
+
+---
+
+## 3. Les objectifs et comment les atteindre
 
 ### Objectif A : fiabiliser les données (à faire en premier)
 
@@ -101,7 +159,7 @@ Protocole minimal défendable :
 
 ---
 
-## 3. Les livrables (tous dans le dépôt Git)
+## 4. Les livrables (tous dans le dépôt Git)
 
 | # | Livrable | Contenu obligatoire |
 |---|---|---|
@@ -116,7 +174,7 @@ Protocole minimal défendable :
 
 ---
 
-## 4. Proposition de répartition et de planning
+## 5. Proposition de répartition et de planning
 
 | | Personne 1 : Data/Pipeline | Personne 2 : Modélisation | Personne 3 : Outil et communication |
 |---|---|---|---|
@@ -127,7 +185,7 @@ Protocole minimal défendable :
 
 ---
 
-## 5. Checklist finale avant rendu
+## 6. Checklist finale avant rendu
 
 - [ ] Le code tourne depuis un `git clone` vierge avec `pip install -r requirements.txt` puis une seule commande
 - [ ] Toutes les statistiques du classeur sont produites par le code
