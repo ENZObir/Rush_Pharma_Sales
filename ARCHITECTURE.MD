@@ -165,13 +165,57 @@ Chaque étape est idempotente et écrit dans `data/processed/`, ce qui permet à
 
 ## 7. Répartition
 
-Elle découle de l'architecture — les trois chantiers ne se touchent que via le format long et `settings.yaml`.
+Deux chantiers qui ne se touchent que via **deux contrats** : le format long (A → B) et des DataFrames de résultats au schéma figé (B → A). Personne n'édite le fichier de l'autre.
 
-| | Périmètre code |
+### 7.1 Périmètres
+
+| | **A — Données → Classeur** | **B — Prévision & environnement** |
+|---|---|---|
+| **Question portée** | « Les données sont-elles fiables, et le client peut-il s'en servir ? » | « Peut-on prévoir, et qu'est-ce qui vient de l'extérieur ? » |
+| **Modules** | `config.py`, `main.py`, `io/loaders.py`, `quality/*`, `features/*`, `stats/descriptive.py`, `excel/*`, `templates/` | `io/external.py`, `forecast/*`, `stats/seasonality.py`, `stats/variability.py`, `viz/plots.py` |
+| **Tests** | `test_calendar.py`, `test_reconciliation.py` | `test_backtest.py` |
+| **`settings.yaml`** | chemins, groupes ATC, seuils qualité | horizon, fenêtre de backtest, sources externes |
+
+Logique du découpage : A tient les deux bouts du pipeline (entrée et sortie), B tout ce qui est analytique. `seasonality` et `variability` sont chez B parce qu'ils alimentent directement les modèles (indices saisonniers) et que le stock de sécurité se dimensionne mieux à partir de l'erreur de prévision qu'à partir du seul CV.
+
+### 7.2 Les contrats d'interface
+
+**A → B** (livré par A dès **J1 midi**, même sous forme de stub) :
+
+```python
+load_all(settings) -> pd.DataFrame                      # format long, §3
+aggregate(df, granularity: str) -> pd.DataFrame         # "D" | "W" | "M"
+last_complete_month(df) -> pd.Period                    # calculé, jamais en dur
+```
+
+**B → A** (schémas figés J1, contenu livré au fil de l'eau) :
+
+| DataFrame | Colonnes |
 |---|---|
-| **Personne 1 — Data/Pipeline** | `io/loaders.py`, `quality/*`, `features/*`, `main.py` |
-| **Personne 2 — Modélisation** | `forecast/*`, `io/external.py` |
-| **Personne 3 — Outil & comm** | `excel/*`, `templates/`, `stats/*`, `viz/plots.py` |
+| `seasonal_profile` | `atc`, `dimension` (`month`/`weekday`/`hour`), `key`, `index` |
+| `variability` | `atc`, `cv`, `safety_stock` |
+| `backtest_results` | `atc`, `model`, `mae`, `mape`, `mase`, `gain_vs_baseline` |
+| `forecast_next` | `atc`, `month`, `yhat`, `model`, `verdict` (`oui`/`non`) |
+| `external_effect` | `atc`, `variable`, `corr`, `delta_mase` |
+
+A écrit chaque DataFrame dans une feuille via `sheets.py` sans connaître son contenu : si B ajoute un modèle, rien ne change côté A.
+
+### 7.3 Planning et points de synchro
+
+| | A | B | Synchro |
+|---|---|---|---|
+| **J1 matin** | Squelette du repo, `config.py`, stub `load_all` sur `Monthly.csv` | Fetch + cache donnée externe, `baselines.py`, `metrics.py` (sur le stub) | **09h** : on fige ensemble §3 et §7.2 |
+| **J1 après-midi** | `schema.py`, `reconciliation.py`, `checks.py` | `backtest.py` + `test_backtest.py` | **18h** : A annonce le dernier mois complet → B fixe la cible |
+| **J2 matin** | `report.py`, `features/*`, `descriptive.py` | `models.py` (ETS, SARIMA), `seasonality.py` | |
+| **J2 après-midi** | `excel/*` + template, `main.py --stage` | Régression exogène, `variability.py`, `external_effect` | **17h** : premier `python main.py` de bout en bout |
+| **J3 matin** | Test depuis un clone vierge, README | `viz/plots.py`, figures pour les decks et le mémo | **11h** : gel du code, on passe à la rédaction |
+
+### 7.4 Règles de travail
+
+- **Une branche par module** (`feat/reconciliation`, `feat/backtest`…), PR vers `main`, **relue par l'autre** avant merge : chacun connaît le code de l'autre pour l'oral.
+- **Commits petits et fréquents**, plusieurs fois par jour chacun : l'historique est noté.
+- **Le stub d'abord** : quand on attend l'autre, on code contre un stub au bon schéma, on ne bloque jamais.
+- Toute modification d'un contrat (§3, §7.2) se décide **à deux** et se répercute dans ce document.
 
 ---
 
