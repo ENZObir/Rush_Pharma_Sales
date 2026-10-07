@@ -1,0 +1,22 @@
+# Données
+pandas>=2.2
+numpy>=1.26
+
+# Configuration (config/settings.yaml)
+PyYAML>=6.0
+
+# Excel : réécriture des feuilles data du template
+openpyxl>=3.1
+
+# Prévision (ETS, SARIMA, régression exogène) et statistiques
+statsmodels>=0.14
+scipy>=1.11
+
+# Données publiques externes (io/external.py)
+requests>=2.31
+
+# Figures (viz/plots.py)
+matplotlib>=3.8
+
+# Tests
+pytest>=8.0
