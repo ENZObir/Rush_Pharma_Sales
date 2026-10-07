@@ -110,8 +110,8 @@ rush_2/
 1. **Format de date `m/d/Y`.** `1/2/2014` + `Thursday` ⇒ 2 janvier 2014, qui était bien un jeudi. À passer explicitement à `pd.to_datetime(..., format=...)` : sans ça, pandas inférera d/m/Y sur une partie des lignes.
 2. **`Monthly` a un format différent** : `2014-01-31` (ISO, fin de mois) et pas de colonnes dérivées. Un parseur par source, pas un parseur global.
 3. **`Daily.csv` contient `Hour = 248`** — valeur sans signification, résidu d'agrégation. Toutes les colonnes `Year / Month / Hour / Weekday Name` sont **droppées à l'import** et recalculées par `features/calendar.py`.
-4. **`Weekly` démarre le dimanche** (`1/5/2014`). À confirmer avant toute comparaison avec une réagrégation ISO (lundi), sinon les écarts seront des artefacts.
-5. **Octobre 2019 probablement incomplet.** `checks.py` le détermine, ne le suppose pas, et l'exclut des stats mensuelles et de l'évaluation des prévisions.
+4. **`Weekly` est daté au dimanche de fin de semaine** (`1/5/2014` = somme du jeudi 2 au dimanche 5, vérifié sur N02BE). Semaine lundi → dimanche, donc réagréger avec `W-SUN` ; la première semaine est partielle.
+5. **Octobre 2019 incomplet** (8 jours, jusqu'au 8/10 ; la ligne `Monthly` est pourtant datée du 31). `checks.py` le détermine, ne le suppose pas, et l'exclut des stats mensuelles et de l'évaluation des prévisions.
 
 ---
 
