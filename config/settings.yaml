@@ -30,6 +30,17 @@ forecast:
   horizon: 1
   backtest_months: 24
   seasonal_period: 12
+  service_level_z: 1.65            # niveau de service 95 % (loi normale, unilatéral)
+  lead_time_months: 1              # délai de réapprovisionnement couvert par le stock de sécurité
+  verdict_min_gain: 0.05           # « oui » si le modèle bat la meilleure baseline d'au moins 5 % de MAE
 
 external:
-  sources: {}                      # rempli par B (Sentinelles, pollens, jours fériés…)
+  timeout: 30                      # secondes, téléchargement d'un cache absent
+  figure_atc: [N02BE, R03]         # groupes illustrés face à la grippe (viz/plots.py)
+  sources:
+    # Réseau Sentinelles (Inserm, Sorbonne Université) : incidence hebdomadaire des
+    # syndromes grippaux pour 100 000 habitants, France entière. Date de génération
+    # du fichier : 1ʳᵉ ligne du cache. Rafraîchir : load_external(..., refresh=True).
+    sentinelles:
+      url: https://www.sentiweb.fr/datasets/all/inc-3-PAY.csv
+      file: sentinelles_grippe.csv
