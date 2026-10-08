@@ -54,6 +54,7 @@ rush_2/
 │   │   ├── schema.py           # normalisation colonnes, dtypes, parsing dates
 │   │   ├── reconciliation.py   # hourly→daily→weekly→monthly + écarts
 │   │   ├── checks.py           # trous, doublons, négatifs, non-entiers, mois incomplet
+│   │   ├── clean.py            # applique les décisions → jeu de référence (hourly + daily)
 │   │   └── report.py           # DataQualityReport → feuille « État des données »
 │   │
 │   ├── features/

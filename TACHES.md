@@ -1,129 +1,116 @@
-# Fiches de poste — A et B
+# Fiches de poste — A et B (plan réduit, 2 jours restants)
 
-*Complément de `ARCHITECTURE.MD` §7. Chaque tâche a une **définition de « fini »** : tant qu'elle n'est pas vraie, la tâche n'est pas finie.*
+*Complément de `ARCHITECTURE.MD` §7. Chaque tâche a une **définition de « fini »**. Le périmètre a été réduit pour tenir en J2 + J3 à deux : ce qui est marqué **bonus** ne se fait que si tout le reste est fini.*
 
-**Faits vérifiés sur les données** (à ne pas redécouvrir) :
+**Règle n°1 : gel du code J2 au soir.** J3 est entièrement consacré au mémo, aux decks et aux oraux. Ce qui n'est pas fini J2 au soir est coupé, pas reporté.
 
-| Fichier | Lignes | Format date | Particularité |
-|---|---|---|---|
-| Hourly | 50 532 | `1/2/2014 8:00` | colonnes `Year/Month/Hour/Weekday Name` à ignorer |
-| Daily | 2 106 | `1/2/2014` | `Hour = 248` absurde ; aucun jour manquant entre le 02/01/2014 et le 08/10/2019 |
-| Weekly | 302 | `1/5/2014` | daté au **dimanche de fin de semaine** (lundi → dimanche), 1ʳᵉ semaine partielle |
-| Monthly | 70 | `2014-01-31` | ISO fin de mois ; la ligne `2019-10-31` ne couvre que 8 jours |
+---
+
+## Ce qui est acquis
+
+| Module | État |
+|---|---|
+| Arborescence, `config.py`, `settings.yaml`, `requirements.txt`, `.gitignore`, CLI `main.py` | ✅ |
+| `io/loaders.py` + `quality/schema.py` : 4 CSV → format long (424 080 lignes) | ✅ |
+| `features/aggregate.py` : `aggregate(df, "D"/"W"/"M")`, étiquettes alignées sur les exports | ✅ |
+| `quality/checks.py` : trous, doublons, négatifs, non-entiers, `month_coverage`, `last_complete_month` | ✅ |
+| `quality/report.py` : `DataQualityReport` | ✅ (aucun finding encore enregistré) |
+
+**Faits établis sur les données** (à ne pas redécouvrir, à réutiliser dans les decks) :
+
+- Horaire = journalier = hebdomadaire une fois réagrégés (écarts < 1e-7) → les 3 sont cohérents.
+- **`Monthly.csv` est incohérent** avec le journalier : 45 cellules sur 560, pire cas octobre 2014 (N02BE 1 830 fourni vs 1 046 recalculé, +75 %). → **écarté, mensuel recalculé depuis le journalier.**
+- Aucun jour manquant, aucun doublon, aucune valeur négative.
+- 17 887 quantités non entières (dont 5 548 au journalier) → signalées, **pas corrigées** (unité non documentée).
+- `last_complete_month` = **2019-09** → mois à prévoir : **octobre 2019**. Octobre 2019 = 8 jours, exclu des stats mensuelles et de la prévision, **conservé** pour les profils jour/heure.
+- Janvier 2014 = 30/31 jours (1ᵉʳ janvier férié) → considéré complet.
+- `Hour` du journalier = somme des heures de la journée (276 = 0+…+23) → preuve que le journalier est dérivé de l'horaire.
 
 ---
 
 ## A — Données → Classeur
 
-> **Question portée :** « Les données sont-elles fiables, et le client peut-il s'en servir sans nous ? »
-> **Livre à B :** le format long, `aggregate`, `last_complete_month`.
-> **Reçoit de B :** les 5 DataFrames de résultats (§7.2), qu'il écrit dans le classeur.
+> **Livre à B :** `load_all`, `aggregate`, `last_complete_month` (✅ disponibles), puis le jeu propre de `clean`.
+> **Reçoit de B :** les DataFrames de résultats (§7.2), qu'il écrit dans le classeur.
 
-### A1. Socle — J1 matin (priorité absolue : B en dépend)
-
-| Fichier | À faire | Fini quand |
-|---|---|---|
-| `config.py` | Déjà fonctionnel. Ajouter un champ si `settings.yaml` grossit. | `load_settings()` marche depuis n'importe quel dossier. |
-| `io/loaders.py` | **Stub d'abord** : `load_all` qui ne lit que `Monthly.csv` et renvoie le format long. Le pousser sur `main` avant midi. Puis la vraie version : lire les 4 CSV, `melt` des 8 colonnes ATC → `atc`/`quantity`, ajouter `source`, `granularity`, `hour` (Int8, rempli seulement pour hourly). | Sortie = exactement les 6 colonnes et dtypes de §3 ; `atc` ∈ les 8 groupes de `settings.yaml`. |
-| `quality/schema.py` | `parse_dates` avec le format **explicite** de `settings.yaml` (jamais d'inférence). `normalize` : drop `Year/Month/Hour/Weekday Name`, dates à minuit sauf hourly, `quantity` en float64. | Aucune `NaT` ; le 1/2/2014 est bien un jeudi 2 janvier. |
-
-### A2. Qualité des données — J1 après-midi
+### J2 matin — finir la qualité
 
 | Fichier | À faire | Fini quand |
 |---|---|---|
-| `features/aggregate.py` | `aggregate(df, "D"/"W"/"M")` : somme par `atc` × période. `W` = `W-SUN` (étiquette au dimanche, comme Weekly.csv), `M` = mois. Une seule fonction. | Daily → W reproduit la 1ʳᵉ ligne de Weekly (N02BE = 185,95). |
-| `quality/reconciliation.py` | Comparer hourly→daily, daily→weekly, daily→monthly, et weekly→monthly si utile. Sortie : `period, atc, pair, expected, actual, abs_gap, rel_gap`. Un écart > tolérance = un finding. | Tableau des écarts complet ; chaque écart notable a une explication (arrondi, semaine partielle, mois incomplet…). |
-| `quality/checks.py` | `missing_days` (calendrier continu vs dates présentes), `duplicates` (date×hour×atc×source), `negatives`, `non_integers` (les quantités décimales existent : M01AE = 3,67 → les compter, pas les corriger), `last_complete_month` (part de jours couverts ≥ seuil). | `last_complete_month` renvoie **2019-09** sans qu'aucune date soit écrite dans le code. |
-| `quality/report.py` | Déjà fonctionnel. Dans `main.run_quality`, ajouter **un finding par décision** : source retenue par usage (hourly → profils intra-jour, daily → le reste), exclusion d'octobre 2019, colonnes droppées, unité non documentée (« quantités enregistrées par le logiciel »), quantités non entières. | La feuille « État des données » se lit seule : source, constat, décision, raison. |
-| `tests/test_reconciliation.py`, `tests/test_calendar.py` | Remplacer les `skip` par de vrais tests. | `pytest` vert. |
+| `quality/reconciliation.py` *(en cours)* | Comparer hourly→D, daily→W, daily→M aux fichiers fournis. Sortie : `period, atc, pair, expected, actual, abs_gap, rel_gap`. | Le tableau retrouve les 45 écarts du mensuel et 0 ailleurs. |
+| `quality/clean.py` *(nouveau)* | `clean(long_df, settings, report)` : garde `hourly` + `daily` seulement, ajoute `complete_month` (bool), enregistre chaque décision dans le report. Sauvegarde dans `data/processed/`. | B, les stats et Excel ne lisent plus que ce jeu-là. |
+| `main.run_quality` | Enchaîne `load_all` → `reconcile_all` → `checks` → `clean`, et ajoute **un finding par décision** : mensuel écarté, hebdo = contrôle seulement, horaire pour les profils intra-jour, journalier pour le reste, octobre 2019 exclu du mensuel, colonnes dérivées supprimées, unité non documentée, quantités décimales conservées, 1ᵉʳ janvier 2014 absent. | `python main.py --stage quality` tourne et écrit le report. |
 
-**→ J1 18h : annoncer à B le dernier mois complet et les écarts de réconciliation qui le concernent.**
-
-### A3. Features et statistiques descriptives — J2 matin
+### J2 après-midi — stats et classeur
 
 | Fichier | À faire | Fini quand |
 |---|---|---|
-| `features/calendar.py` | `add_calendar` : `year`, `month`, `iso_week`, `weekday` (0 = lundi), `month_period`. Tout dérivé de `date`. | Aucune colonne calendaire ne vient d'un CSV. |
-| `stats/descriptive.py` | `volumes_and_shares` : volume total et part par ATC (par année et global). `yearly_trend` : évolution annuelle, **années complètes seulement** ou ramenées au même nombre de mois. Exclure le mois incomplet. | Chaque chiffre soutient une phrase du deck (« N02BE = X % des volumes »). |
+| `features/calendar.py` | `add_calendar` : `year`, `month`, `weekday` (0 = lundi). Le reste seulement si un module en a besoin. | Dérivé de `date` uniquement. |
+| `stats/descriptive.py` | Volume total et part par ATC, évolution annuelle sur **années complètes** (2014 → 2018, 2019 sur 9 mois à comparer à 9 mois). | 3 chiffres utilisables tels quels dans un deck. |
+| `templates/outil_pharma.xlsx` *(à la main dans Excel)* | Feuilles **Synthèse**, **Statistiques**, **État des données**, **Prévisions**, **Outil**, **Data**. Chaque feuille data = un **tableau nommé**. Outil : 2 listes déroulantes (ATC, mois) + `FILTER` / `SUMIFS`. **Pas de TCD ni de segments.** | Un non-pythoniste choisit un ATC et une période et voit les ventes ; aucune macro, aucune `#REF!`. |
+| `excel/writer.py` | Copie le template vers `output/`, réécrit le contenu d'un tableau nommé et **redimensionne sa plage** (`table.ref`). | Le fichier généré s'ouvre sans alerte de réparation. |
+| `excel/sheets.py` | Une fonction par feuille : `write_data_quality`, `write_sales_long` (journalier propre), `write_descriptive`, `write_seasonality`, `write_forecast`, `write_summary`. | Toutes les stats du classeur viennent du code. |
+| `main.run_stats`, `main.run_excel` | Lisent/écrivent `data/processed/`. | `python main.py` régénère le classeur. |
 
-### A4. Classeur et outil — J2 après-midi
+**→ J2 soir : premier `python main.py` de bout en bout avec B, puis gel du code.**
 
-| Élément | À faire | Fini quand |
-|---|---|---|
-| `templates/outil_pharma.xlsx` *(fait dans Excel, pas en Python)* | Feuilles : **Synthèse**, **Statistiques**, **Saisonnalité**, **Prévisions**, **État des données**, **Outil**, **Data** (cachée ou en dernier). Chaque feuille data = un **tableau nommé** (`tbl_ventes`, `tbl_qualite`…). Feuille **Outil** : listes déroulantes (validation des données) pour ATC et période, formules `FILTER` / `SUMIFS` / `LET` pointant sur les tableaux nommés — ou TCD + segments + chronologie. | Un utilisateur sans Python sélectionne plusieurs ATC et une période et voit les ventes ; aucune macro, aucune `#REF!`. |
-| `excel/writer.py` | `TemplateWriter` : copie le template vers `output/`, vide et réécrit le contenu d'un tableau nommé, **redimensionne sa plage** (`table.ref`), ne touche à aucune autre feuille. | Ouvrir le fichier généré dans Excel : aucune alerte de réparation. |
-| `excel/sheets.py` | Une fonction par feuille. `write_sales_long` écrit le format long journalier + horaire (c'est la source de l'outil). `write_summary` reprend 3 à 5 chiffres clés depuis les autres DataFrames. | Toutes les stats du classeur viennent du code. |
-| `main.py` | Implémenter `run_quality` / `run_stats` / `run_excel` : chaque étape lit et écrit ses intermédiaires dans `data/processed/` (parquet ou CSV) pour pouvoir être relancée seule. | `python main.py --stage excel` marche seul si les étapes d'avant ont tourné. |
-
-**→ J2 17h : premier `python main.py` de bout en bout avec B.**
-
-### A5. Reproductibilité — J3 matin
-
-- `git clone` dans un dossier temporaire → `python -m venv .venv` → `pip install -r requirements.txt` → `python main.py`. Corriger tout ce qui casse.
-- **Test « mois supplémentaire »** : dupliquer un mois fictif dans une copie des CSV, relancer, vérifier que rien n'est à modifier dans le code.
-- Ouvrir le classeur dans **Excel 365** et tester l'outil comme un client.
-- README : installation, commande, structure, tableau « qui a fait quoi ».
-- Vérifier le dépôt : pas de `.venv`, `__pycache__`, `output/`, brouillons.
+**Bonus A** : `test_reconciliation.py`, `test_calendar.py`, test « mois supplémentaire ».
 
 ---
 
 ## B — Prévision & environnement
 
-> **Question portée :** « Peut-on prévoir le mois suivant, et quelle part des ventes vient de l'environnement ? »
-> **Reçoit de A :** `load_all`, `aggregate`, `last_complete_month` (stub dès J1 midi).
-> **Livre à A :** `seasonal_profile`, `variability`, `backtest_results`, `forecast_next`, `external_effect`.
+> **Reçoit de A :** `load_all`, `aggregate`, `last_complete_month` (✅ disponibles).
+> **Série mensuelle à utiliser :** `aggregate(df[df.source == "daily"], "M")`, filtrée sur `date <= last_complete_month`. **Jamais `source == "monthly"`** (incohérent).
+> **Cible :** octobre 2019. **Fenêtre de backtest :** 24 derniers mois complets (oct. 2017 → sept. 2019).
 
-### B1. Donnée externe et métriques — J1 matin (sans attendre A)
-
-| Fichier | À faire | Fini quand |
-|---|---|---|
-| `io/external.py` | Choisir **une** source principale + une secondaire. Recommandé : **Réseau Sentinelles** (incidence hebdo des syndromes grippaux, CSV téléchargeable) pour N02BE / R03, et **jours fériés + vacances scolaires** (data.gouv.fr) pour les creux. Pollens (RNSA) pour R06 si accessible. `fetch` télécharge une fois, écrit `data/external/<nom>.csv`, puis lit le cache ; `use_network=False` ne touche jamais au réseau. | Le pipeline tourne hors-ligne avec le cache commité ; l'URL et la date de téléchargement sont notées en tête de fichier ou dans `settings.yaml`. |
-| `forecast/metrics.py` | `mae`, `mape` (gérer les zéros : N05C a des mois très bas → l'exclure ou utiliser sMAPE, le dire), `mase` (échelle = MAE du naïf **saisonnier** sur le train, `period=12`), `gain_vs_baseline = 1 - err_modèle / err_baseline`. | Testé à la main sur 3 valeurs. |
-| `forecast/baselines.py` | `Naive` (M = M-1) et `SeasonalNaive` (M = M-12). `predict` renvoie une Series indexée par les mois futurs. | Respectent l'interface `Forecaster`. |
-
-### B2. Backtest — J1 après-midi
+### J2 matin — le protocole de prévision (le cœur de la note)
 
 | Fichier | À faire | Fini quand |
 |---|---|---|
-| `forecast/backtest.py` | `rolling_origin` : pour chaque mois test M (les `backtest_months` derniers mois **complets**), entraîner sur `y[:M-1]`, prévoir M. Le modèle est **recréé** à chaque origine (`make_model()`). `run_backtests` boucle sur ATC × modèles et calcule les métriques. | Aucune donnée ≥ M dans l'entraînement ; octobre 2019 n'apparaît nulle part. |
-| `tests/test_backtest.py` | Test anti-fuite : un faux modèle qui enregistre `y.index.max()` à chaque `fit` ; vérifier `< date prévue` pour toutes les origines. | `pytest` vert. |
+| `forecast/metrics.py` | `mae`, `mape` (exclure les mois à 0 ou passer en sMAPE, et le dire), `mase` (échelle = MAE du naïf saisonnier sur le train, `period=12`), `gain_vs_baseline = 1 − err_modèle / err_baseline`. | Vérifié à la main sur 3 valeurs. |
+| `forecast/baselines.py` | `Naive` (M = M-1), `SeasonalNaive` (M = M-12), interface `Forecaster`. | `predict` renvoie une Series indexée par les mois futurs. |
+| `forecast/backtest.py` | `rolling_origin` : pour chaque mois test M, entraîner sur les mois < M seulement, prévoir M, modèle **recréé** à chaque origine. `run_backtests` : boucle ATC × modèles → `backtest_results`. | Aucune donnée ≥ M dans le train. |
+| `tests/test_backtest.py` | **Obligatoire.** Faux modèle qui enregistre `y.index.max()` à chaque `fit` ; vérifier `< date prévue` pour toutes les origines. | `pytest` vert. |
 
-**→ J1 18h : récupérer de A le dernier mois complet et figer cible + fenêtre de test.**
-
-### B3. Modèles et saisonnalité — J2 matin
-
-| Fichier | À faire | Fini quand |
-|---|---|---|
-| `forecast/models.py` | `ETS` : `statsmodels` `ExponentialSmoothing` (tendance additive amortie, saisonnalité 12 ; variante sans tendance). `SARIMA` : `SARIMAX` avec un ordre simple fixe, ex. `(1,0,0)(0,1,1,12)` — pas d'auto-ARIMA par ATC, trop long et sur-ajusté. Gérer les échecs de convergence (fallback sur la baseline + log). | Le backtest tourne sur les 8 ATC en moins de quelques minutes. |
-| `stats/seasonality.py` | `seasonal_profile(df, "month")` sur le **mensuel** (moyenne du mois / moyenne annuelle, années complètes), `"weekday"` sur le **journalier**, `"hour"` sur l'**horaire**. Sortie au format long `atc, dimension, key, index` (1 = moyenne). | On retrouve R06 au printemps, R03 et N02BE en hiver — sinon, chercher pourquoi. |
-
-### B4. Effet externe et variabilité — J2 après-midi
+### J2 après-midi — modèle, saisonnalité, donnée externe
 
 | Fichier | À faire | Fini quand |
 |---|---|---|
-| `forecast/models.py` → `ExogRegression` | Régression des ventes mensuelles sur la variable externe (+ saisonnalité via dummies de mois ou SARIMAX avec `exog`). **La valeur externe du mois prévu doit être connue à M-1** : utiliser la valeur décalée (lag 1) ou le dire explicitement. | Entre dans le même backtest que les autres. |
-| Calcul de `external_effect` | Par ATC : corrélation ventes ↔ variable (sur données désaisonnalisées ou en écart à la normale, pas brutes) **et** `delta_mase` = MASE avec exogène − MASE sans. | Au moins une ligne permet une recommandation (« le pic grippal explique X % de… »). |
-| `stats/variability.py` | `cv` = écart-type / moyenne mensuelle par ATC. `safety_stock` = `z × σ(erreur de prévision du meilleur modèle)` avec z = 1,65 (95 %) ; à défaut σ des ventes. | Chiffre par ATC, unité « quantités logiciel ». |
-| `forecast_next` | Pour chaque ATC : meilleur modèle au backtest, prévision du mois suivant le dernier mois complet, `verdict` = `oui` si MASE < 1 **et** gain > 0 vs les deux baselines, sinon `non`. | Une réponse par groupe, assumée même si c'est « non ». |
+| `forecast/models.py` → `ETS` | `ExponentialSmoothing` de statsmodels, saisonnalité additive 12, tendance amortie. Si échec de convergence : fallback sur `SeasonalNaive` + log. | Le backtest tourne sur les 8 ATC. |
+| `forecast_next` | Par ATC : meilleur modèle au backtest, prévision d'octobre 2019, `verdict` = `oui` si MASE < 1 **et** meilleur que les deux baselines, sinon `non`. | Une réponse par groupe, assumée même si c'est « non ». |
+| `stats/seasonality.py` | `seasonal_profile` : `month` sur le mensuel recalculé (années complètes), `weekday` sur le journalier, `hour` sur l'horaire. Format `atc, dimension, key, index`. | On retrouve R06 au printemps, R03/N02BE en hiver. |
+| `io/external.py` | **Une seule source.** Recommandé : **Réseau Sentinelles** (incidence hebdo des syndromes grippaux) pour N02BE/R03. Plan B si le téléchargement bloque : jours fériés + vacances scolaires (data.gouv.fr). Télécharger une fois, commiter le cache dans `data/external/`, noter l'URL et la date. | Le pipeline tourne avec `--no-external`. |
+| `external_effect` | Par ATC concerné : corrélation ventes ↔ variable **en écart à la saisonnalité** (pas sur les séries brutes). | Au moins une phrase de recommandation pour le deck Propriétaire. |
+| `stats/variability.py` | `cv` = écart-type / moyenne mensuelle ; `safety_stock` = 1,65 × écart-type mensuel. | Un chiffre par ATC. |
 
-**→ J2 17h : premier `python main.py` de bout en bout avec A.**
+**→ J2 soir : premier `python main.py` de bout en bout avec A, puis gel du code.**
 
-### B5. Figures — J3 matin
+**Bonus B** (seulement si tout ce qui précède est fini) : `SARIMA` à ordre fixe `(1,0,0)(0,1,1,12)` ; `ExogRegression` avec la variable externe décalée d'un mois et `delta_mase` ; stock de sécurité basé sur l'erreur de prévision.
 
-| Fichier | À faire |
-|---|---|
-| `viz/plots.py` | `plot_seasonality` (heatmap ATC × mois), `plot_backtest` (MASE par ATC et modèle, ligne à 1), `plot_external` (ventes N02BE vs incidence grippale). PNG dans `output/figures/`, mêmes couleurs par ATC partout. |
+### J3 matin — figures
+
+`viz/plots.py`, **3 figures seulement** : heatmap saisonnalité ATC × mois, MASE par ATC (ligne à 1), N02BE vs incidence grippale. PNG dans `output/figures/`.
 
 ---
 
-## Hors code — proposition
+## Planning
+
+| | A | B | Ensemble |
+|---|---|---|---|
+| **J2 matin** | `reconciliation`, `clean`, `run_quality` | `metrics`, `baselines`, `backtest`, `test_backtest` | **9h** : point sur l'avancée de B |
+| **J2 après-midi** | `calendar`, `descriptive`, template Excel, `writer`, `sheets` | `ETS`, `forecast_next`, `seasonality`, `external`, `variability` | **14h** : B confirme la source externe |
+| **J2 soir** | | | **`python main.py` complet → gel du code** |
+| **J3 matin** | Mémo partie 2, deck Propriétaire, test clone vierge, README | Mémo partie 1, deck Manager, figures | |
+| **J3 après-midi** | | | Deck Pharmacien, puis **répétition des 3 oraux** (chacun en présente au moins un) |
+
+## Hors code
 
 | | A | B |
 |---|---|---|
-| **Mémo PDF** | Partie 2 : risques du partage (réidentification horaire N05B/N05C, RGPD art. 9, CSP R.4235-5, L.1453-3, recommandation tranchée) | Partie 1 : réponse sur la prévision (protocole, résultats, verdict par groupe) |
-| **Decks** | Propriétaire (effets internes, recommandations, offre du labo) | Manager (méthode, qualité, backtest, mission de suivi) |
-| **Ensemble** | Deck Pharmacien acheteur : A fait la démo de l'outil, B la saisonnalité et la prévisibilité | |
-| **J3 après-midi** | Chacun répète **les trois** oraux, chacun en présente au moins un | |
+| **Mémo PDF** | Partie 2 : risques du partage (réidentification horaire N05B/N05C, RGPD art. 9, CSP R.4235-5, L.1453-3), recommandation tranchée | Partie 1 : prévision (protocole, résultats, verdict par groupe) |
+| **Decks** (5 slides max) | Propriétaire : effets internes/externes, recommandations, offre du labo | Manager : méthode, mensuel incohérent détecté, backtest, mission de suivi |
+| **Ensemble** | Pharmacien : A fait la démo de l'outil, B la saisonnalité et les groupes prévisibles | |
 
 ## Points de vigilance communs
 
