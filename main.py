@@ -6,7 +6,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
-from pharma.config import load_settings  # noqa: E402
+from pharma.config import ROOT, load_settings  # noqa: E402
+from pharma.forecast.stage import compute_forecast_stage  # noqa: E402
+from pharma.io.external import load_external  # noqa: E402
+from pharma.io.loaders import load_all  # noqa: E402
+from pharma.viz.plots import save_figures  # noqa: E402
 
 STAGES = ["quality", "stats", "forecast", "excel"]
 
@@ -28,7 +32,19 @@ def run_stats(settings):
 
 
 def run_forecast(settings, use_external: bool):
-    raise NotImplementedError  # B : external → baselines/models → backtest
+    """B : backtest, prévision, saisonnalité, variabilité, effet externe → data/processed/forecast/ + figures."""
+    external = load_external(settings, use_network=use_external)
+    stage = compute_forecast_stage(settings, load_all(settings), external)
+
+    out_dir = settings.processed_dir / "forecast"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for name, df in stage.outputs().items():
+        df.to_csv(out_dir / f"{name}.csv", index=False)
+
+    figures = save_figures(stage, settings.figures_dir, settings.external.get("figure_atc"))
+    print(f"  dernier mois complet : {stage.last_complete_month}")
+    print(f"  {len(stage.outputs())} tables → {out_dir.relative_to(ROOT)}")
+    print(f"  {len(figures)} figures → {settings.figures_dir.relative_to(ROOT)}")
 
 
 def run_excel(settings):
