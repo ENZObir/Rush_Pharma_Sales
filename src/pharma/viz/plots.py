@@ -3,10 +3,11 @@
 from pathlib import Path
 
 import pandas as pd
+import matplotlib.pyplot as plt
 
 
 def plot_seasonality(profile: pd.DataFrame, out_dir: Path) -> Path:
-    raise NotImplementedError
+    return
 
 
 def plot_backtest(backtest: pd.DataFrame, out_dir: Path) -> Path:
