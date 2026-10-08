@@ -36,6 +36,7 @@ forecast:
 
 external:
   timeout: 30                      # secondes, téléchargement d'un cache absent
+  figure_atc: [N02BE, R03]         # groupes illustrés face à la grippe (viz/plots.py)
   sources:
     # Réseau Sentinelles (Inserm, Sorbonne Université) : incidence hebdomadaire des
     # syndromes grippaux pour 100 000 habitants, France entière. Date de génération
