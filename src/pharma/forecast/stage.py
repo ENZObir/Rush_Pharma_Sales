@@ -23,7 +23,7 @@ CHOICE_COLUMNS = ["atc", "model", "verdict"]
 FORECAST_COLUMNS = ["atc", "month", "yhat", "model", "verdict"]
 
 
-def candidate_models(period: int) -> dict:
+def candidate_models(period: int = 12) -> dict:
     """Modèles en compétition pour la prévision (SarimaX ne sert qu'à mesurer l'apport externe)."""
     return {
         "naive": Naive,
