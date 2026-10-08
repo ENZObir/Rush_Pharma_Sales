@@ -99,10 +99,13 @@ class SARIMA(_StatsmodelsForecaster):
 
     order = (1, 0, 0)
     seasonal_order = (0, 1, 1)
+    # 50 itérations (défaut statsmodels) ne suffisent pas avec un régresseur : 20 replis
+    # sur 192 au backtest réel, aucun à 200, résultats identiques à 500.
+    maxiter = 200
 
     def _fit(self, y, exog):
         result = SARIMAX(y, exog=exog, order=self.order,
-                         seasonal_order=(*self.seasonal_order, self.period)).fit(disp=False)
+                         seasonal_order=(*self.seasonal_order, self.period)).fit(disp=False, maxiter=self.maxiter)
         if not result.mle_retvals.get("converged", True):
             raise RuntimeError("non-convergence du maximum de vraisemblance")
         return result
