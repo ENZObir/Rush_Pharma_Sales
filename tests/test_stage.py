@@ -1,11 +1,8 @@
-import dataclasses
-
 import pandas as pd
 import pytest
 
 from pharma.forecast.backtest import BASELINES
-from pharma.forecast.stage import choose_models, compute_forecast_stage
-from pharma.io.external import load_external
+from pharma.forecast.stage import choose_models
 from pharma.quality.checks import last_complete_month
 
 CONTRACT = {
@@ -17,11 +14,9 @@ CONTRACT = {
 }
 
 
-@pytest.fixture(scope="module")
-def stage(real_settings, real_long):
-    # fenêtre de test courte pour garder la suite rapide ; le protocole est le même
-    fast = dataclasses.replace(real_settings, forecast={**real_settings.forecast, "backtest_months": 3})
-    return compute_forecast_stage(fast, real_long, load_external(fast, use_network=False))
+@pytest.fixture
+def stage(real_stage):
+    return real_stage
 
 
 def test_outputs_have_exact_contract_columns(stage):
