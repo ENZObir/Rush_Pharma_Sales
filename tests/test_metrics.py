@@ -38,6 +38,10 @@ def test_mase_by_hand():
     assert mase(Y_TRUE, Y_PRED, monthly([1, 2, 4, 8], start="2018-09"), period=2) == pytest.approx((10 / 3) / 4.5)
 
 
+def test_mase_is_nan_when_history_has_no_seasonal_change():
+    assert math.isnan(mase(Y_TRUE, Y_PRED, monthly([5, 5, 5, 5], start="2018-09"), period=2))
+
+
 def test_gain_vs_baseline():
     assert gain_vs_baseline(8, 10) == pytest.approx(0.2)
     assert gain_vs_baseline(12, 10) == pytest.approx(-0.2)
