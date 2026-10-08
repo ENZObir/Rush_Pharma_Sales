@@ -32,6 +32,7 @@ forecast:
   seasonal_period: 12
   service_level_z: 1.65            # niveau de service 95 % (loi normale, unilatéral)
   lead_time_months: 1              # délai de réapprovisionnement couvert par le stock de sécurité
+  verdict_min_gain: 0.05           # « oui » si le modèle bat la meilleure baseline d'au moins 5 % de MAE
 
 external:
   timeout: 30                      # secondes, téléchargement d'un cache absent
