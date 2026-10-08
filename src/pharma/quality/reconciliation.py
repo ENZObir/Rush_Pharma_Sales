@@ -5,7 +5,8 @@ import pandas as pd
 
 def reconcile(long_df: pd.DataFrame, finer: str, coarser: str) -> pd.DataFrame:
     """Écarts par atc × période : colonnes period, atc, expected, actual, abs_gap, rel_gap."""
-    raise NotImplementedError
+    long_df.groupby([""])
+    return 
 
 
 def reconcile_all(long_df: pd.DataFrame) -> pd.DataFrame:
