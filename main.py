@@ -9,12 +9,16 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 from pharma.config import ROOT, load_settings  # noqa: E402
+from pharma.excel import sheets  # noqa: E402
+from pharma.excel.writer import TemplateWriter  # noqa: E402
 from pharma.forecast.stage import compute_forecast_stage  # noqa: E402
 from pharma.io.external import load_external  # noqa: E402
 from pharma.io.loaders import load_all  # noqa: E402
+from pharma.quality.checks import last_complete_month  # noqa: E402
 from pharma.quality.clean import clean  # noqa: E402
 from pharma.quality.reconciliation import reconcile_all, summarize  # noqa: E402
 from pharma.quality.report import DataQualityReport  # noqa: E402
+from pharma.stats.descriptive import monthly_sales, volumes_and_shares, yearly_trend  # noqa: E402
 from pharma.viz.plots import save_figures  # noqa: E402
 
 STAGES = ["quality", "stats", "forecast", "excel"]
@@ -40,6 +44,13 @@ def load_clean(settings):
     return pd.read_pickle(path)
 
 
+def read_processed(settings, stage: str, name: str) -> pd.DataFrame:
+    path = settings.processed_dir / stage / f"{name}.csv"
+    if not path.exists():
+        sys.exit(f"{path.relative_to(ROOT)} absent : lancer d'abord `python main.py --stage {stage}`")
+    return pd.read_csv(path)
+
+
 def run_quality(settings):
     """A : 4 exports → réconciliation → nettoyage → data/processed/quality/ (jeu propre + état des données)."""
     long_df = load_all(settings)
@@ -61,7 +72,16 @@ def run_quality(settings):
 
 
 def run_stats(settings):
-    raise NotImplementedError  # A : descriptive · B : seasonality, variability
+    """A : ventes mensuelles (mois complets), volumes et parts, tendance annuelle → data/processed/stats/."""
+    monthly = monthly_sales(load_clean(settings))
+    out_dir = settings.processed_dir / "stats"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    tables = {"monthly": monthly, "volumes": volumes_and_shares(monthly), "yearly_trend": yearly_trend(monthly)}
+    for name, df in tables.items():
+        df.to_csv(out_dir / f"{name}.csv", index=False)
+    top = tables["volumes"].iloc[0]
+    print(f"  {monthly['date'].nunique()} mois complets, {top['atc']} = {top["share"]:.1%} des volumes")
+    print(f"  {len(tables)} tables → {out_dir.relative_to(ROOT)}")
 
 
 def run_forecast(settings, use_external: bool):
@@ -81,7 +101,26 @@ def run_forecast(settings, use_external: bool):
 
 
 def run_excel(settings):
-    raise NotImplementedError  # A : writer + sheets
+    """A : remplit les tableaux nommés du template → output/Analyse_Pharma.xlsx."""
+    clean_df = load_clean(settings)
+    data = {"clean": clean_df,
+            "report": read_processed(settings, "quality", "data_quality_report"),
+            "reconciliation_summary": read_processed(settings, "quality", "reconciliation_summary"),
+            "volumes": read_processed(settings, "stats", "volumes"),
+            "yearly_trend": read_processed(settings, "stats", "yearly_trend")}
+    for name in ("seasonal_profile", "variability", "backtest_results", "forecast_next", "external_effect"):
+        data[name] = read_processed(settings, "forecast", name)
+    last = last_complete_month(clean_df, settings.quality["incomplete_month_ratio"])
+
+    writer = TemplateWriter(settings.template, settings.output)
+    sheets.write_summary(writer, data, last)
+    sheets.write_descriptive(writer, data["volumes"], data["variability"], data["yearly_trend"])
+    sheets.write_seasonality(writer, data["seasonal_profile"], settings.atc_groups)
+    sheets.write_forecast(writer, data["forecast_next"], data["backtest_results"], data["external_effect"])
+    sheets.write_data_quality(writer, data["report"], data["reconciliation_summary"])
+    sheets.write_sales(writer, clean_df, settings.atc_groups)
+    writer.save()
+    print(f"  classeur → {settings.output.relative_to(ROOT)}")
 
 
 def main() -> None:
