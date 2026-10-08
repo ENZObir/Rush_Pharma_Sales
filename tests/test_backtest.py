@@ -7,6 +7,7 @@ import pytest
 from pharma.features.aggregate import aggregate
 from pharma.forecast.backtest import BACKTEST_COLUMNS, rolling_origin, run_backtests, score, to_wide
 from pharma.forecast.baselines import Naive, SeasonalNaive, future_index
+from pharma.forecast.exogenous import lagged_exog
 
 N_TEST = 12
 
@@ -19,12 +20,14 @@ class Spy:
 
     def fit(self, y, X=None):
         self.index_ = y.index
-        self.seen = {"y_max": y.index.max(), "X_max": None if X is None else X.index.max(), "model": self}
+        self.seen = {"y_max": y.index.max(), "X_max": None if X is None else X.index.max(),
+                     "X_values": None if X is None else X.to_numpy().ravel(), "model": self}
         self.log.append(self.seen)
         return self
 
     def predict(self, h, X=None):
         self.seen["X_future"] = None if X is None else list(X.index)
+        self.seen["X_future_values"] = None if X is None else X.to_numpy().ravel()
         return pd.Series(0.0, index=future_index(self.index_, h))
 
 
@@ -50,6 +53,18 @@ def test_no_leakage(y, X):
         assert seen["X_max"] < target
         assert seen["X_future"] == [target]  # seule la ligne du mois prévu, X étant déjà décalé
     assert (preds["train_end"] < preds["target"]).all()
+
+
+def test_no_leakage_of_external_values(y):
+    """Chaque valeur externe vaut le numéro de son mois d'observation : aucune ne doit dater de M ou après."""
+    months = pd.period_range(y.index[0] - 6, y.index[-1], freq="M")
+    external = pd.DataFrame({"month": months, "variable": "syndromes_grippaux",
+                             "value": [float(m.ordinal) for m in months]})
+    log = []
+    rolling_origin(y, lambda: Spy(log), N_TEST, lagged_exog(external, y.index))
+    for seen, target in zip(log, y.index[-N_TEST:]):
+        assert seen["X_values"].max() < target.ordinal
+        assert seen["X_future_values"].tolist() == [(target - 1).ordinal]  # l'incidence de M-1, rien de plus
 
 
 def test_no_leakage_two_steps_ahead(y, X):
